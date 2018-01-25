@@ -958,6 +958,20 @@ PUBLIC void socketFree(int sid)
 }
 
 
+
+PUBLIC int socketMatch(int sid, int port)
+{
+	int         i = 0;
+
+	if(port == socketGetPort(sid) && (socketGetMode(sid) | SOCKET_LISTENING)) {
+		/*  Match  */
+		return 1;
+	}
+
+	return 0;
+}
+
+
 /*
     Return the socket object reference
  */

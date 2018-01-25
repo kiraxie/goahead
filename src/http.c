@@ -9,6 +9,7 @@
 
 /********************************* Includes ***********************************/
 
+#include    <sys/utsname.h>
 #include    "goahead.h"
 
 /********************************* Defines ************************************/
@@ -209,9 +210,160 @@ static void     setFileLimits();
 static int      setLocalHost();
 static void     socketEvent(int sid, int mask, void *data);
 static void     writeEvent(Webs *wp);
+static int      complete(Webs *wp, int reuse);
 #if ME_GOAHEAD_ACCESS_LOG
 static void     logRequest(Webs *wp, int code);
 #endif
+
+/*********************************** Develop *************************************/
+
+#define TEST_STR        "TEST"
+#define HTTP_LISTEN     "http://*:80"
+#define HTTP_ENABLE     "HTTPEN"
+#define HTTP_DISABLE    "HTTPDIS"
+#define HTTPS_LISTEN     "https://*:443"
+#define HTTPS_ENABLE    "HTTPSEN"
+#define HTTPS_DISABLE   "HTTPSDIS"
+#define UNUSED_PARAM(x) ((void)x)
+
+static void gah_listen(cchar *endpoint)
+{
+    char        *ip = NULL;
+    int         port = 0;
+    int         secure = 0;
+    int         sid = 0;
+    int         i = 0;
+
+    socketParseAddress(endpoint, &ip, &port, &secure, 80);
+
+    for(i = listenMax; i >= 0; i--) {
+        sid = listens[i];
+        if(socketMatch(sid, ip, port)) {
+            trace(2, "%s has been listened!", endpoint);
+            return;
+        }
+    }
+
+    if(websListen(endpoint) < 0) {
+        trace(2, "Web listen failed! endpoint: %s", endpoint);
+    }
+
+    return;
+}
+
+static void gah_unlisten(Webs *now, cchar *endpoint)
+{
+    char        *ip = NULL;
+    int         port = 0;
+    int         secure = 0;
+    int         sid = 0;
+    Webs        *wp = NULL;
+    int         i = 0;
+    int         j = 0;
+
+    socketParseAddress(endpoint, &ip, &port, &secure, 80);
+
+    for(i = listenMax - 1; i >= 0; i--) {
+        sid = listens[i];
+        if(socketMatch(sid, port)) {
+            for(j = 0; webs && j < websMax; j++) {
+                if((wp = webs[j]) == NULL) {
+                    continue;
+                }
+
+                if(wp->listenSid == sid) {
+
+                    if(now->sid != wp->sid) {
+                        websFree(wp);
+                    }
+                }
+            }
+            socketCloseConnection(sid);
+            listens[i] = listens[listenMax];
+            listens[listenMax] = 0;
+            listenMax--;
+            return;
+        }
+    }
+
+    return;
+}
+
+static void gah_action_http_enable(Webs *wp)
+{
+    UNUSED_PARAM(wp);
+    websSetStatus(wp, HTTP_CODE_OK);
+    websWriteHeaders(wp, -1, 0);
+    websWriteHeader(wp, "Content-Type", "application/json");
+    websWriteEndHeaders(wp);
+    websWrite(wp, "{\"success\": true}\n");
+    websDone(wp);
+    gah_listen(HTTP_LISTEN);
+}
+
+static void gah_action_http_disable(Webs *wp)
+{
+    UNUSED_PARAM(wp);
+    websSetStatus(wp, HTTP_CODE_OK);
+    websWriteHeaders(wp, -1, 0);
+    websWriteHeader(wp, "Content-Type", "application/json");
+    websWriteEndHeaders(wp);
+    websWrite(wp, "{\"success\": true}\n");
+    websDone(wp);
+    gah_unlisten(wp, HTTP_LISTEN);
+}
+
+static void gah_action_https_enable(Webs *wp)
+{
+    UNUSED_PARAM(wp);
+    websSetStatus(wp, HTTP_CODE_OK);
+    websWriteHeaders(wp, -1, 0);
+    websWriteHeader(wp, "Content-Type", "application/json");
+    websWriteEndHeaders(wp);
+    websWrite(wp, "{\"success\": true}\n");
+    websDone(wp);
+    gah_listen(HTTPS_LISTEN);
+}
+
+static void gah_action_https_disable(Webs *wp)
+{
+    UNUSED_PARAM(wp);
+    websSetStatus(wp, HTTP_CODE_OK);
+    websWriteHeaders(wp, -1, 0);
+    websWriteHeader(wp, "Content-Type", "application/json");
+    websWriteEndHeaders(wp);
+    websWrite(wp, "{\"success\": true}\n");
+    websDone(wp);
+    gah_unlisten(wp, HTTPS_LISTEN);
+}
+
+static void gah_test_get(Webs *wp)
+{
+    struct utsname   buffer;
+
+    memset(&buffer, 0, sizeof(struct utsname));
+
+    errno = 0;
+    if (uname(&buffer) != 0) {
+        websError(wp, HTTP_CODE_INTERNAL_SERVER_ERROR, "Action failed! The system is unstable!");
+        return;
+    }
+    websSetStatus(wp, HTTP_CODE_OK);
+    websWriteHeaders(wp, -1, 0);
+    websWriteHeader(wp, "Content-Type", "application/json");
+    websWriteEndHeaders(wp);
+    websWrite(wp, "{\"success\": true}\n");
+    websDone(wp);
+}
+
+static int gah_action_hook(void)
+{
+    websDefineAction(TEST_STR, gah_test_get);
+    websDefineAction(HTTP_ENABLE, gah_action_http_enable);
+    websDefineAction(HTTP_DISABLE, gah_action_http_disable);
+    websDefineAction(HTTPS_ENABLE, gah_action_https_enable);
+    websDefineAction(HTTPS_DISABLE, gah_action_https_disable);
+}
 
 /*********************************** Code *************************************/
 
@@ -286,6 +438,9 @@ PUBLIC int websOpen(cchar *documents, cchar *routeFile)
     /* Some platforms don't implement O_APPEND (VXWORKS) */
     lseek(accessFd, 0, SEEK_END);
 #endif
+
+    gah_action_hook();
+
     return 0;
 }
 
@@ -1088,22 +1243,19 @@ static void parseHeaders(Webs *wp)
             }
 
         } else if (strcmp(key, "content-length") == 0) {
-            if ((wp->rxLen = atoi(value)) < 0) {
-                websError(wp, HTTP_CODE_REQUEST_TOO_LARGE | WEBS_CLOSE, "Invalid content length");
-                return;
-            }
+            wp->rxLen = atoi(value);
             if (smatch(wp->method, "PUT")) {
-                if (wp->rxLen > ME_GOAHEAD_LIMIT_PUT) {
+                if (wp->rxLen > ME_GOAHEAD_LIMIT_PUT || wp->rxLen < 0) {
                     websError(wp, HTTP_CODE_REQUEST_TOO_LARGE | WEBS_CLOSE, "Too big");
                     return;
                 }
             } else {
-                if (wp->rxLen > ME_GOAHEAD_LIMIT_POST) {
+                if (wp->rxLen > ME_GOAHEAD_LIMIT_POST || wp->rxLen < 0) {
                     websError(wp, HTTP_CODE_REQUEST_TOO_LARGE | WEBS_CLOSE, "Too big");
                     return;
                 }
             }
-            if (!smatch(wp->method, "HEAD")) {
+            if (wp->rxLen > 0 && !smatch(wp->method, "HEAD")) {
                 wp->rxRemaining = wp->rxLen;
             }
 

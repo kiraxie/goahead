@@ -41,7 +41,7 @@ DFLAGS                += -DME_DEBUG=1 $(patsubst %,-D%,$(filter ME_%,$(MAKEFLAGS
 IFLAGS                += "-I$(BUILD)/inc"
 LDFLAGS               += 
 LIBPATHS              += -L$(BUILD)/bin
-LIBS                  += -lrt -ldl -lpthread -lm
+LIBS                  += -lrt -ldl -lpthread -lm -lssl -lcrypto
 
 DEBUG                 ?= debug
 CFLAGS-debug          ?= -g

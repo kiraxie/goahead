@@ -140,3 +140,13 @@ help:
 	@echo '' >&2
 	@echo 'Use "SHOW=1 make" to show executed commands.' >&2
 	@echo '' >&2
+
+dev:
+	$(MAKE) ME_COM_SSL=1	\
+	ME_COM_OPENSSL=1	\
+	ME_COM_MBEDTLS=0	\
+	ME_GOAHEAD_CGI=0	\
+	ME_GOAHEAD_JAVASCRIPT=0 \
+	ME_GOAHEAD_ACCESS_LOG=0 \
+	-f projects/goahead-linux-static.mk
+

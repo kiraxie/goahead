@@ -1,10 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<title>Home Page</title>
+    <title>Home Page</title>
+    <script src="jquery-2.2.4.min.js"></script>
 </head>
 
 <body>
     <p>Congratulations! The server is up and running.<p/>
+    <script type="text/javascript">
+        var TIMEID = setInterval(function() {
+            $.ajax({
+                'type': 'post',
+                'url': '/action/TEST',
+                'contentType': "application/json; charset=utf-8",
+                'dataType': 'json',
+                'data': JSON.stringify({'action': 'test'}),
+                'success': function(_data) {
+                    if(typeof(_data.success) == 'undefined') {
+                        console.log('FAILED!');
+                    }
+                },
+                'error': function(xhr) {
+                    $('body').html(xhr.responseText);
+                }
+            });
+            $.ajax({
+                'type': 'post',
+                'url': '/action/TEST',
+                'contentType': "application/json; charset=utf-8",
+                'dataType': 'json',
+                'success': function(_data) {
+                    if(typeof(_data.success) == 'undefined') {
+                        console.log('FAILED!');
+                    }
+                },
+                'error': function(xhr) {
+                    $('body').html(xhr.responseText);
+                }
+            });
+            $.ajax({
+                'type': 'post',
+                'url': '/action/TEST',
+                'contentType': "application/json; charset=utf-8",
+                'dataType': 'json',
+                'success': function(_data) {
+                    if(typeof(_data.success) == 'undefined') {
+                        console.log('FAILED!');
+                    }
+                },
+                'error': function(xhr) {
+                    $('body').html(xhr.responseText);
+                }
+            });
+        }, 3000);
+    </script>
 </body>
 </html>
