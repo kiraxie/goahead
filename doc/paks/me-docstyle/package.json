@@ -34,7 +34,7 @@
         "exp-reload": "~0.3",
         "exp-html": "~0.2",
         "exp-canon": "~0.1",
-        "jquery": "~2",
+        "jquery": "~4",
         "semantic-ui": "~2"
     },
     "pak": {
